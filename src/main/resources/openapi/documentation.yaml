@@ -1,0 +1,405 @@
+openapi: 3.0.3
+info:
+  title: Notes API
+  description: |
+    # Introduction
+    This API provides a full-featured Notes management system with secure authentication.
+
+    ## Authentication Setup
+    This API uses **JWT (JSON Web Tokens)** for securing endpoints.
+    
+    1. **Register/Login**: Use the `/auth/register` or `/auth/login` endpoints to start.
+    2. **Bearer Token**: Upon successful login (or registration), you will receive an `accessToken`.
+    3. **Authorize**: Click the **"Authorize"** button in this Swagger UI and enter your token in the format: `Bearer <your_token>`.
+    4. **Access Protected Routes**: Once authorized, your token will be automatically sent in the `Authorization` header for all protected requests.
+
+    ## Features
+    - **2FA Login**: Password verification followed by email OTP.
+    - **Account Lifecycle**: 30-day deletion cooldown with restoration support.
+    - **Notes CRUD**: Secure, user-isolated notes management with pagination.
+  version: 1.2.0
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+tags:
+  - name: Authentication
+    description: User registration, 2FA login, password recovery, and account lifecycle management.
+  - name: Notes
+    description: User-specific CRUD operations for managing personal notes.
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Creates a new user account. Returns tokens and profile immediately. A verification OTP is sent to the email.
+      security: [] # No auth required for registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: "John Doe" }
+                email: { type: string, format: email, example: "john@example.com" }
+                password: { type: string, format: password, example: "Secret123!" }
+      responses:
+        '201':
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: User already exists.
+
+  /auth/verify-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email with OTP
+      description: Validates the 6-digit code sent during registration to verify the user's email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, example: "john@example.com" }
+                code: { type: string, example: "123456" }
+      responses:
+        '200':
+          description: Email verified successfully.
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Step 1 - Login (Request OTP)
+      description: Validates password and sends a 2FA OTP code to the user's email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, example: "john@example.com" }
+                password: { type: string, example: "Secret123!" }
+      responses:
+        '200':
+          description: Credentials valid. OTP sent to email.
+        '401':
+          description: Invalid email or password.
+        '403':
+          description: Account scheduled for deletion.
+
+  /auth/login-verify:
+    post:
+      tags:
+        - Authentication
+      summary: Step 2 - Verify Login
+      description: Takes the OTP from Step 1 and returns the JWT Access and Refresh tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, example: "john@example.com" }
+                code: { type: string, example: "123456" }
+      responses:
+        '200':
+          description: Login successful. Tokens issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: "john@example.com" }
+      responses:
+        '200':
+          description: Reset code sent.
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password with OTP
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                code: { type: string }
+                newPassword: { type: string }
+      responses:
+        '200':
+          description: Password updated.
+
+  /auth/restore:
+    post:
+      tags:
+        - Authentication
+      summary: Restore account
+      description: Cancels a pending account deletion request.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Account reactivated.
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get user profile
+      description: Returns the profile of the currently authenticated user. Requires Bearer Token.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized. Token missing or invalid.
+
+  /auth/account:
+    delete:
+      tags:
+        - Authentication
+      summary: Request deletion
+      description: Marks the account for deletion. Starts a 30-day cooldown period.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Deletion request scheduled.
+
+  /notes:
+    get:
+      tags:
+        - Notes
+      summary: List notes
+      description: Retrieves a paginated list of notes belonging to the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number (starts at 1)
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          description: Number of notes per page
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotesListResponse'
+    post:
+      tags:
+        - Notes
+      summary: Create note
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResponse'
+
+  /notes/{id}:
+    get:
+      tags:
+        - Notes
+      summary: Get note
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Note found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResponse'
+        '404':
+          description: Note not found.
+    put:
+      tags:
+        - Notes
+      summary: Update note
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteRequest'
+      responses:
+        '200':
+          description: Updated.
+    delete:
+      tags:
+        - Notes
+      summary: Delete note
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Deleted.
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh tokens
+      description: Exchange a valid Refresh Token for a new pair of Access and Refresh tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Tokens refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+components:
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        status: { type: boolean }
+        message: { type: string }
+        data:
+          type: object
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+            accessToken: { type: string }
+            refreshToken: { type: string }
+    UserResponse:
+      type: object
+      properties:
+        status: { type: boolean }
+        message: { type: string }
+        data: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        verified: { type: boolean }
+        createdAt: { type: integer, format: int64 }
+        lastLoginAt: { type: integer, format: int64, nullable: true }
+        deletionRequestedAt: { type: integer, format: int64, nullable: true }
+    NoteRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title: { type: string }
+        content: { type: string }
+    NoteResponse:
+      type: object
+      properties:
+        status: { type: boolean }
+        message: { type: string }
+        data: { $ref: '#/components/schemas/Note' }
+    NotesListResponse:
+      type: object
+      properties:
+        status: { type: boolean }
+        message: { type: string }
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Note' }
+    Note:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        title: { type: string }
+        content: { type: string }
+        createdAt: { type: integer, format: int64 }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []

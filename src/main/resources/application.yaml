@@ -1,0 +1,27 @@
+ktor:
+  deployment:
+    port: 8080
+  application:
+    modules:
+      - com.dreamcode.presentation.DatabasesKt.configureDatabases
+      - com.dreamcode.presentation.HTTPKt.configureHTTP
+      - com.dreamcode.presentation.SecurityKt.configureSecurity
+      - com.dreamcode.presentation.SerializationKt.configureSerialization
+      - com.dreamcode.presentation.DocumentationKt.configureDocumentation
+      - com.dreamcode.RoutingKt.configureRouting
+
+storage:
+  driverClassName: ${DB_DRIVER}
+  jdbcURL: ${DB_JDBC_URL}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+
+jwt:
+  issuer: "http://0.0.0.0:8080"
+  audience: "notes-audience"
+  realm: "notes-app"
+  secret: ${JWT_SECRET}
+
+email:
+  apiKey: ${RESEND_API_KEY}
+  from: ${EMAIL_FROM}
